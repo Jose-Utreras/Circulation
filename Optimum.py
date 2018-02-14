@@ -17,7 +17,7 @@ Nbins=1
 start=1
 kmin=200
 kmax=700
-Nk=16
+Nk=12
 name='NWR10025'
 #if yt.is_root():
 #    kt,kd=Circulation_negative_optimum(name,kmin,kmax,Nk)
