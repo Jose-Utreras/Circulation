@@ -1338,6 +1338,3 @@ def Circulation_negative_optimum_thread(name,k):
 
 
     return kd2,err
-
-def prueba(kt):
-    return np.random.uniform(),np.random.uniform()
