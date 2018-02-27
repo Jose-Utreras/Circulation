@@ -13,16 +13,17 @@ import os
 import glob
 
 Ncores=2
-Nbins=1
+Nbins=8
 start=1
-kmin=200
-kmax=700
-Nk=12
+kmin=750
+kmax=850
+Nk=4
 name='NWR10025'
 #if yt.is_root():
 #    kt,kd=Circulation_negative_optimum(name,kmin,kmax,Nk)
 #    print(kt,kd)
 #    write_kt_kd(name,kt,kd)
+
 kk=Circulation_negative_optimum_mpi(name,kmin,kmax,Nk,Ncores)
 time.sleep(5)
 try:
@@ -31,7 +32,7 @@ try:
     print(kt,kd)
 except:
     pass
-
+"""
 KK=Circulation_negative_turbulence(name,Nbins,start,kmin,kmax,Nk,Ncores)
 try:
     KT,KD=KK
@@ -47,3 +48,4 @@ apply_negative_radial_fit(name,Ncores)
 if yt.is_root():
     os.system('rm *temp*.npy  *KK*.npy')
     compare_negative(name,Nbins)
+"""

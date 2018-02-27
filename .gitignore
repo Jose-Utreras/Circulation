@@ -1,3 +1,13 @@
 *npy
 /Temp_Files
 /Circulation_data
+/__pycache__
+*Negative_Fit
+/Examples
+Test.py
+.DS_Store
+*.txt
+*.ipynb
+/Temp_Figures
+/.ipynb_checkpoints
+/Sims

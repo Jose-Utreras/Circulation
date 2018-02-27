@@ -12,13 +12,7 @@ import glob
 from scipy.optimize import curve_fit
 import pickle
 from skimage.transform import resize
-
-def colorplot(number,n):
-    dz=np.linspace(0,number,number+1)
-
-    norm = plt.Normalize()
-    colors = plt.cm.jet(norm(dz))
-    return colors[n]
+from common_functions import *
 
 def sample(i,j,R2,xmax,ymax):
     R=R2+0.5
@@ -63,78 +57,418 @@ def spatial_noise_radial(image,R2):
             new_image[i,j]=image[I,J]
     return new_image
 
-def example(N,n,S):
-    Omega=np.ones((N,N))
+def example(N,n,S,direc):
 
-    X=np.array(list(np.reshape(range(N),(1,N)))*N)
+    bool1=os.path.isfile(direc+'vx_N%04d'%N+'_n%.1f'%n+'.npy')
+    bool2=os.path.isfile(direc+'vy_N%04d'%N+'_n%.1f'%n+'.npy')
+    bool3=os.path.isfile(direc+'vort_N%04d'%N+'_n%.1f'%n+'.npy')
+    if bool1&bool2&bool3:
+        Vx=np.load(direc+'vx_N%04d'%N+'_n%.1f'%n+'.npy')
+        Vy=np.load(direc+'vy_N%04d'%N+'_n%.1f'%n+'.npy')
+    else:
+        Omega=np.ones((N,N))
 
-    Y=X.T
-    X=np.reshape(X,(N,N))-np.mean(X)
-    Y=np.reshape(Y,(N,N))-np.mean(Y)
-    R=np.sqrt(X**2+Y**2)
+        X=np.array(list(np.reshape(range(N),(1,N)))*N)
 
-    Omega/=(R+0.2)**n
-    Omega/=((2-n)*Omega.sum())
-    Vort=(2-n)*Omega
-    Vx=-Omega*Y
-    Vy=Omega*X
+        Y=X.T
+        X=np.reshape(X,(N,N))-0.5*N
+        Y=np.reshape(Y,(N,N))-0.5*N
+        R=np.sqrt(X**2+Y**2)
 
+        Omega/=(R+0.2)**n
+        Omega/=((2-n)*Omega.sum())
+        Vort=(2-n)*Omega
+        Vx=-Omega*Y
+        Vy=Omega*X
+        np.save(direc+'vx_N%04d'%N+'_n%.1f'%n,Vx)
+        np.save(direc+'vy_N%04d'%N+'_n%.1f'%n,Vy)
+        np.save(direc+'vort_N%04d'%N+'_n%.1f'%n,Vort[1:-1,1:-1])
     Vx=spatial_noise(Vx,S)
     Vy=spatial_noise(Vy,S)
     DVX=(Vy[1:-1,2:]-Vy[1:-1,:-2])/2
     DVY=(Vx[2:,1:-1]-Vx[:-2,1:-1])/2
 
     Vort2=-DVY+DVX
-    Vort=Vort[1:-1,1:-1]
-    return Vort,Vort2
+    return Vort2
 
 def save_example(N,n,S_noise,S_diff,directory):
-
     if directory[-1]=='/':
-        print(directory+'vort_N%04d'%N+'_n%.1f'%n+'.npy')
-        if os.path.isfile(directory+'vort_N%04d'%N+'_n%.1f'%n+'.npy'):
-            print('File written before')
-            pass
-        else:
-            Vort,Vort2=example(N,n,S_noise)
-            np.save(directory+'vort_N%04d'%N+'_n%.1f'%n,Vort)
-        if os.path.isfile(directory+'noise_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise+'.npy'):
-            pass
-        else:
-            try:
-                np.save(directory+'noise_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise,Vort2)
-            except:
-                Vort,Vort2=example(N,n,S_noise)
-                np.save(directory+'noise_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise,Vort2)
+        pass
     else:
-        print(directory+'/vort_N%04d'%N+'_n%.1f'%n+'.npy')
-        if os.path.isfile(directory+'/vort_N%04d'%N+'_n%.1f'%n+'.npy'):
-            print('File written before')
-            pass
-        else:
-            Vort,Vort2=example(N,n,S_noise)
-            np.save(directory+'/vort_N%04d'%N+'_n%.1f'%n,Vort)
-        if os.path.isfile(directory+'/noise_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise+'.npy'):
-            pass
-        else:
-            try:
-                np.save(directory+'/noise_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise,Vort2)
-            except:
-                Vort,Vort2=example(N,n,S_noise)
-                np.save(directory+'/noise_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise,Vort2)
-        try:
-            del Vort
-        except:
-            pass
+        directory+='/'
+    if os.path.isfile(directory+'noise_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise+'.npy'):
+        print('noise file exists',N,n,S_noise)
+        Vort2=np.load(directory+'noise_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise+'.npy')
+    else:
+        Vort2=example(N,n,S_noise,directory)
+        np.save(directory+'noise_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise,Vort2)
     if S_diff=='None':
         pass
     else:
         for sd in S_diff:
-            Vort=difussion(Vort2,sd,mode='wrap')
-            temp='%03d'%int(sd)+'.%02d'%(100*(sd-int(sd)))
-            np.save(directory+'/difussion_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise+'_D'+temp,Vort)
-            del Vort
+            if os.path.isfile(directory+'difussion_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise+'_D'+temp+'.npy'):
+                pass
+            else:
+                Vort=difussion(Vort2,sd,mode='wrap')
+                temp='%02d'%sd
+                np.save(directory+'difussion_N%04d'%N+'_n%.1f'%n+'_R%03d'%S_noise+'_D'+temp,Vort)
+                del Vort
     return True
+
+def fit_examples():
+    lista=glob.glob('Examples/difussion*')
+    lista.sort()
+    NN=len(lista)
+    n=np.zeros(NN)
+    R=np.zeros(NN)
+    D=np.zeros(NN)
+    A=np.zeros(NN)
+    mu=np.zeros(NN)
+    sig=np.zeros(NN)
+
+    for k,li in enumerate(lista):
+        if k%10==0:
+            print(k,NN)
+        name=li
+        name=name.split('_')
+        n[k]=float(name[-3][1:])
+        R[k]=int(name[-2][1:])
+        D[k]=int(name[-1][1:3])
+        mapa=np.load(li)
+        res,Neg=Circulation_Negative(mapa)
+        x=res[Neg>0]
+        y=Neg[Neg>0]
+        try:
+            f1=interp1d(y,x)
+            x50=f1(y[0]/2)
+            s=(x50-1)/(np.sqrt(2*np.log(2)))
+            popt, pcov = curve_fit(gaussian, x , y, p0=[y[0],x[0],s],bounds=(-np.inf,[np.inf,1,np.inf]))
+
+            A[k]=popt[0]
+            mu[k]=popt[1]
+            sig[k]=popt[2]
+            if A[k]>0.5:
+                plt.plot(x,y,'b')
+                plt.plot(x,gaussian(x,*popt),'r:')
+                plt.show()
+                plt.close()
+        except:
+            A[k]=0
+            mu[k]=0
+            sig[k]=0
+    tabla=Table()
+    tabla['n']=Column(n)
+    tabla['R']=Column(R)
+    tabla['D']=Column(D)
+    tabla['A']=Column(A)
+    tabla['mu']=Column(mu)
+    tabla['sig']=Column(sig)
+    tabla.write('Examples/Table_Parameters',path='data',format='hdf5',overwrite=True)
+
+def grid_table(N,narr,snarr,sdarr,directory):
+    if directory[-1]=='/':
+        pass
+    else:
+        directory+='/'
+
+    NN=len(narr)*len(snarr)*len(sdarr)
+    ii=-1
+    n=np.zeros(NN)
+    R=np.zeros(NN)
+    D=np.zeros(NN)
+    A=np.zeros(NN)
+    mu=np.zeros(NN)
+    sig=np.zeros(NN)
+
+    for nd in narr:
+        for S_noise in snarr:
+            if os.path.isfile(directory+'noise_N%04d'%N+'_n%.1f'%nd+'_R%03d'%S_noise+'.npy'):
+                Vort=np.load(directory+'noise_N%04d'%N+'_n%.1f'%nd+'_R%03d'%S_noise+'.npy')
+            else:
+                Vort=example(N,nd,S_noise,directory)
+            for sd in sdarr:
+                ii+=1
+
+                n[ii]=nd
+                R[ii]=S_noise
+                D[ii]=sd
+                temp='%02d'%sd
+                if os.path.isfile(directory+'difussion_N%04d'%N+'_n%.1f'%nd+'_R%03d'%S_noise+'_D'+temp+'.npy'):
+                    Vort2=np.load(directory+'difussion_N%04d'%N+'_n%.1f'%nd+'_R%03d'%S_noise+'_D'+temp+'.npy')
+                else:
+                    Vort2=difussion(Vort,sd,mode='wrap')
+                res,Neg=Circulation_Negative(Vort2)
+                x=res[Neg>0]
+                y=Neg[Neg>0]
+                try:
+                    f1=interp1d(y,x)
+                    x50=f1(y[0]/2)
+                    s=(x50-1)/(np.sqrt(2*np.log(2)))
+                    popt, pcov = curve_fit(gaussian, x , y, p0=[y[0],x[0],s],bounds=(-np.inf,[np.inf,1,np.inf]))
+
+                    A[ii]=popt[0]
+                    mu[ii]=popt[1]
+                    sig[ii]=popt[2]
+                    del popt,pcov,s,x50,f1
+                except:
+                    A[ii]=0
+                    mu[ii]=0
+                    sig[ii]=0
+                del res,Neg,x,y
+                print(ii*100.0/NN)
+
+    tabla=Table()
+    tabla['n']=Column(n)
+    tabla['R']=Column(R)
+    tabla['D']=Column(D)
+    tabla['A']=Column(A)
+    tabla['mu']=Column(mu)
+    tabla['sig']=Column(sig)
+    tabla.write('Examples/Table_Parameters_Grid',path='data',format='hdf5',overwrite=True)
+
+def grid_table_n(N,nd,snarr,sdarr,directory):
+    if directory[-1]=='/':
+        pass
+    else:
+        directory+='/'
+
+    NN=len(snarr)*len(sdarr)
+    ii=-1
+    R=np.zeros(NN)
+    D=np.zeros(NN)
+    A=np.zeros(NN)
+    mu=np.zeros(NN)
+    sig=np.zeros(NN)
+
+    for S_noise in snarr:
+        if os.path.isfile(directory+'noise_N%04d'%N+'_n%.1f'%nd+'_R%03d'%S_noise+'.npy'):
+            Vort=np.load(directory+'noise_N%04d'%N+'_n%.1f'%nd+'_R%03d'%S_noise+'.npy')
+        else:
+            Vort=example(N,nd,S_noise,directory)
+        for sd in sdarr:
+            ii+=1
+            R[ii]=S_noise
+            D[ii]=sd
+            temp='%02d'%sd
+            if os.path.isfile(directory+'difussion_N%04d'%N+'_n%.1f'%nd+'_R%03d'%S_noise+'_D'+temp+'.npy'):
+                Vort2=np.load(directory+'difussion_N%04d'%N+'_n%.1f'%nd+'_R%03d'%S_noise+'_D'+temp+'.npy')
+            else:
+                Vort2=difussion(Vort,sd,mode='wrap')
+            res,Neg=Circulation_Negative(Vort2)
+            x=res[Neg>0]
+            y=Neg[Neg>0]
+            try:
+                f1=interp1d(y,x)
+                x50=f1(y[0]/2)
+                s=(x50-1)/(np.sqrt(2*np.log(2)))
+                popt, pcov = curve_fit(gaussian, x , y, p0=[y[0],x[0],s],bounds=(-np.inf,[np.inf,1,np.inf]))
+                A[ii]=popt[0]
+                mu[ii]=popt[1]
+                sig[ii]=popt[2]
+                del popt,pcov,s,x50,f1
+            except:
+                A[ii]=0
+                mu[ii]=0
+                sig[ii]=0
+            del res,Neg,x,y
+            print(nd,ii*100.0/NN)
+
+    tabla=Table()
+    tabla['R']=Column(R)
+    tabla['D']=Column(D)
+    tabla['A']=Column(A)
+    tabla['mu']=Column(mu)
+    tabla['sig']=Column(sig)
+    tabla.write('Examples/Table_Parameters_Grid_n%.1f'%nd,path='data',format='hdf5',overwrite=True)
+    return 'done'
+
+def merge_grid_tables():
+    tablas=glob.glob('Examples/Table_Parameters_Grid_n*')
+
+    tablas.sort()
+
+    tabla_0=Table()
+
+    for tabname in tablas:
+        tabla=Table.read(tabname,path='data')
+
+        NN=len(tabla)
+        n=float(tabname.split('n')[-1])*np.ones(NN)
+
+        tabla['n']=Column(n)
+        tabla_0=vstack([tabla_0,tabla])
+    tabla_0.write('Examples/Table_Parameters_Grid_Merged',path='data',format='hdf5',overwrite=True)
+
+def prediction_negative(Ao,muo,sigo):
+    tabla=Table.read('Examples/Table_Parameters_Grid_Merged',path='data')
+    R=tabla['R']
+    D=tabla['D']
+    n=tabla['n']
+
+    A=tabla['A']
+    mu=tabla['mu']
+    sig=tabla['sig']
+
+
+    wA=np.percentile(A,84)-np.percentile(A,16)
+    wm=np.percentile(mu,84)-np.percentile(mu,16)
+    ws=np.percentile(sig,84)-np.percentile(sig,16)
+
+    A/=wA
+    mu/=wm
+    sig/=ws
+
+    Ao/=wA
+    muo/=wm
+    sigo/=ws
+
+    Po=[Ao,muo,sigo]
+
+    P=[]
+    Q=[]
+    for i,j,k in zip(A,mu,sig):
+        P.append([i,j,k])
+    for i,j,k in zip(n,R,D):
+        Q.append([i,j,k])
+    P=np.array(P)
+    Q=np.array(Q)
+    Distances=np.zeros_like(A)
+    for k,p in enumerate(P):
+        Distances[k]=distance(p,Po)
+
+    Quadrants=np.array(Heaviside(mu-muo)+Heaviside(A-Ao)*2+Heaviside(sig-sigo)*4,dtype=int)
+
+    nq=len(set(Quadrants))
+    cube_n=np.zeros(nq)
+    cube_R=np.zeros(nq)
+    cube_D=np.zeros(nq)
+    cube_l=np.zeros(nq)
+
+    for j,k in enumerate(set(Quadrants)):
+        qua=Quadrants==k
+        dmin=Distances[qua].min()
+        ver=Distances[qua]==dmin
+        cube_n[j]=n[qua][ver]
+        cube_R[j]=R[qua][ver]
+        cube_D[j]=D[qua][ver]
+        cube_l[j]=1.0/dmin**3
+
+    n_predict=(cube_n*cube_l).sum()/cube_l.sum()
+    R_predict=(cube_R*cube_l).sum()/cube_l.sum()
+    D_predict=(cube_D*cube_l).sum()/cube_l.sum()
+
+    return n_predict,R_predict,D_predict
+
+def pnn(Ao,muo,sigo,n):
+    tabla=Table.read('Examples/Table_Parameters_Grid_n%.1f' %n,path='data')
+
+    R=tabla['R']
+    D=tabla['D']
+
+    A=tabla['A']
+    mu=tabla['mu']
+    sig=tabla['sig']
+
+
+    wA=np.percentile(A,84)-np.percentile(A,16)
+    wm=np.percentile(mu,84)-np.percentile(mu,16)
+    ws=np.percentile(sig,84)-np.percentile(sig,16)
+
+    A/=wA
+    mu/=wm
+    sig/=ws
+
+    Ao/=wA
+    muo/=wm
+    sigo/=ws
+
+    Po=[Ao,muo,sigo]
+
+    P=[]
+    Q=[]
+    for i,j,k in zip(A,mu,sig):
+        P.append([i,j,k])
+    for i,j in zip(R,D):
+        Q.append([i,j])
+    P=np.array(P)
+    Q=np.array(Q)
+    Distances=np.zeros_like(A)
+
+    for k,p in enumerate(P):
+        Distances[k]=distance(p,Po)
+
+    Quadrants=np.array(Heaviside(mu-muo)+Heaviside(A-Ao)*2+Heaviside(sig-sigo)*4,dtype=int)
+
+    nq=len(set(Quadrants))
+    cube_R=np.zeros(nq)
+    cube_D=np.zeros(nq)
+    cube_l=np.zeros(nq)
+
+    for j,k in enumerate(set(Quadrants)):
+        qua=Quadrants==k
+        dmin=Distances[qua].min()
+        ver=Distances[qua]==dmin
+        cube_R[j]=R[qua][ver]
+        cube_D[j]=D[qua][ver]
+        cube_l[j]=1.0/dmin
+
+    R_predict=(cube_R*cube_l).sum()/cube_l.sum()
+    D_predict=(cube_D*cube_l).sum()/cube_l.sum()
+
+    return R_predict,D_predict
+
+def prediction_negative_n(Ao,muo,sigo,n):
+    n1=int(n*10)/10
+    n2=n1+np.sign(n-n1)/10
+    n1=np.abs(n1)
+    n2=np.abs(n2)
+    n=np.abs(n)
+    w1=n2-n
+    w2=n-n1
+
+    w1=w1/(w1+w2)
+    w2=1-w1
+
+    r1,d1=pnn(Ao,muo,sigo,n1)
+    r2,d2=pnn(Ao,muo,sigo,n2)
+
+    return r1*w1+r2*w2,d1*w1+d2*w2
+
+def save_slope(name):
+    vort=np.load(name+'_omeg.npy')
+    vd1=np.diag(vort)
+    N=len(vd1)
+    x=np.array(range(len(vd1[int(N/2):])))
+    x=np.sqrt(2)*x*2e4/x.max()
+    y=vd1[int(N/2):]
+    y=y[x<1.5e4]
+    x=x[x<1.5e4]
+    y=y[x>0]
+    x=x[x>0]
+    p=np.polyfit(np.log(x),np.log(y),4)
+    x=np.sqrt(2)*x*2e4/x.max()
+    x=x[x>0]
+
+    n=np.polyval([p[0]*4,p[1]*3,p[2]*2,p[3]],np.log(x))
+
+    x=np.insert(x,0,0)
+    n=np.insert(n,0,0)
+    x=np.insert(x,len(x),1e5)
+    n=np.insert(n,len(n),n[-1])
+    np.savetxt(name+'_slope.txt', (x,n))
+    return True
+
+def get_slope(name,rmin,rmax):
+    X,N=np.loadtxt(name+'_slope.txt' ,ndmin=2, unpack=True).T
+    fN=interp1d(X,N)
+    rmin=100
+    rmax=200
+    radius=np.linspace(rmin,rmax,100)
+    Nest=fN(radius)
+
+    NF=np.average(Nest,weights=radius)
+
+    return NF
 
 def get_velocities(name):
     if os.path.isfile(name+'_vx.npy')&os.path.isfile(name+'_vy.npy'):
@@ -206,7 +540,7 @@ def difussion_image(name,R):
 
     return VORT
 
-def dispersion_image(name,R,vel):
+def dispersion_image(name,vel):
 
     vx,vy=get_velocities(name)
 
@@ -217,8 +551,8 @@ def dispersion_image(name,R,vel):
     dx=4.0e4/N
     vturb=vel*dx/conv
 
-    noise=np.random.normal(0,vturb,size=(int(N/R),int(N/R)))
-    noise=resize(noise,(N,N),order=0)
+    noise=np.random.normal(0,vturb,size=(N,N))
+    #noise=resize(noise,(N,N),order=0)
 
     VX=vx+noise
     VY=vy+noise
@@ -729,6 +1063,38 @@ def Circulation_Negative(mapa):
 
     return res, Negative
 
+def Circulation_sigma(mapa):
+
+    N=len(mapa)
+    res=list((10**np.linspace(0,np.log10(N),100)+1e-5))
+    res.sort()
+    res=np.array(res).astype(int)
+    res=np.array(list(set(res)))
+    res.sort()
+
+    res=np.array(list(set((N/res).astype(int))))
+    res.sort()
+    Negative=np.zeros_like(res,dtype=float)
+
+    L=np.zeros_like(res,dtype=float)
+
+    for k,R in enumerate(res):
+        fake=block_reduce(mapa, R, func=np.sum)
+        N1=len(fake)
+        L[k]=N1
+        radial=radial_map(fake)
+        fake=fake.ravel()
+        radial=radial.ravel()*4.0e4/N1
+        try:
+            fake=fake[radial<1.5e4]
+            Negative[k]=np.percentile(fake,84)-np.percentile(fake,16)
+        except:
+            Negative[k]=0
+    Negative[np.isnan(Negative)]=0
+
+
+    return res, Negative, L
+
 def Circulation_optimum(name):
 
     Data=np.load(name+'_vort.npy')
@@ -862,18 +1228,6 @@ def Circulation_negative_optimum(name,kmin,kmax,Nk):
             kd2=kd2*(1+factor*2)
     return karray[nk-1],KD[-2]
 
-def radial_map(mapa):
-    xmax,ymax=np.shape(mapa)
-
-    X=np.array(list(np.reshape(range(xmax),(1,xmax)))*xmax)
-
-    Y=X.T
-    X=np.reshape(X,(xmax,xmax))-xmax/2
-    Y=np.reshape(Y,(xmax,xmax))-ymax/2
-    R=np.sqrt(X**2+Y**2)
-
-    return R
-
 def Circulation_Negative_radii(mapa,Nbins):
     N   = len(mapa)
     res = list((10**np.linspace(0,np.log10(N),100)+1e-5))
@@ -948,17 +1302,34 @@ def Circulation_negative_fits(name,k,Nbins,start):
                 fz=interp1d(x,z)
                 ynew=fy(xnew)
                 znew=fz(xnew)
+                znew*=ynew[0]/znew[0]
                 err=(znew-ynew)**2
                 err=np.mean(err)
                 err=np.sqrt(err)
                 erarray[j]=err
-                plt.title(str(err))
+
+
+                plt.title('error_%08.4f' %err)
                 plt.plot(x,y,'b-')
-                plt.plot(x,z,'r:')
+                plt.plot(x,z*y[0]/z[0],'r:')
+
+                x=x[y>0]
+                y=y[y>0]
+                dx=x[0]
+                x=x/dx
+                f1=interp1d(y,x)
+                x50=f1(y[0]/2)
+                s=(x50-1)/(np.sqrt(2*np.log(2)))
+                popt, pcov = curve_fit(gaussian, x , y, p0=[y[0],x[0],s],bounds=(-np.inf,[np.inf,1.01,np.inf]))
+                plt.plot(res,gaussian(res/dx,*popt),'k-.')
+                print(j,prediction_negative(*popt)[1])
                 plt.xscale('log')
                 plt.xlim(30,5e3)
-                plt.savefig('Temp_Files/Figures/Negative_kt_%06.2f' %k+'_kd_%05.2f'%kd+'_j_%02d' %j +'.png')
+                #plt.yscale('log')
+                plt.ylim(ymin=0.0)
+                plt.savefig('Temp_Files/Figures/Negative_j_%02d' %j +'_kt_%06.2f' %k+'_kd_%05.2f'%kd+'.png')
                 plt.close()
+
                 del raux,Naux,err,z
 
         kd+=0.1
@@ -1288,10 +1659,10 @@ def Circulation_negative_optimum_mpi(name,kmin,kmax,Nk,Ncores):
 def Circulation_negative_optimum_thread(name,k):
     print('Circulation_negative_optimum_thread')
     Data=np.load(name+'_vort.npy')
-    dx=4.0e4/len(Data)
+    dx0=4.0e4/len(Data)
 
     tab=Table.read('Circulation_data/Full-Percentiles/Negative/'+name+'-Negative',path='data')
-    r0=tab['Resolution']
+    r0=tab['Resolution']*2
     N0=tab['Number']
 
     r0=np.insert(r0,0,0)
@@ -1321,18 +1692,39 @@ def Circulation_negative_optimum_thread(name,k):
 
         VORT2=difussion(VORT,kd2,mode='wrap')
         res,Neg=Circulation_Negative(VORT2)
-        res=res*dx
-        err=(Neg-Ne(res))**2
+        res=res*dx0
+        aNeg=Ne(res)
+        XMAX=max(res[np.where(Neg>0)].max(),res[np.where(aNeg>0)].max())
+        XMIN=max(res[np.where(Neg>0)].min(),res[np.where(aNeg>0)].min())
+        xnew=np.exp(np.linspace(np.log(XMIN),np.log(XMAX),1000))
+        fy=interp1d(res,Neg)
+        fz=interp1d(res,aNeg)
+        ynew=fy(xnew)
+        znew=fz(xnew)
+        ynew*=znew[0]/ynew[0]
+        err=(ynew-znew)**2
         err=np.sqrt(np.mean(err))
 
-        plt.plot(tab['Resolution'],tab['Number'])
-
+        n_slope=get_slope(name,0,1.5e4)
+        plt.plot(tab['Resolution']*2,tab['Number'])
+        x=tab['Resolution']
+        y=tab['Number']
+        x=x[y>0]
+        y=y[y>0]
+        dx=x[0]
+        x=2*x/dx
+        f1=interp1d(y,x)
+        x50=f1(y[0]/2)
+        s=(x50-1)/(np.sqrt(2*np.log(2)))
+        popt, pcov = curve_fit(gaussian, x , y, p0=[y[0],x[0]/2.0,s],bounds=(-np.inf,[np.inf,1.01,np.inf]))
+        plt.plot(res,gaussian(res/dx0,*popt),'k-.')
+        print(*popt)
+        print(prediction_negative_n(*popt,n_slope))
         plt.plot(res,Neg,color="#38c3ff",linestyle=':')
         plt.xscale('log')
         plt.title('error_%08.4f' %err)
         plt.axvline(kd2*dx,color='k',linestyle=':')
         plt.xlim(30,5e3)
-
         plt.savefig('Temp_Files/Figures/Negative_kt_%06.2f' %k+'_kd_%05.2f'%kd2+'.png')
         plt.close()
 
