@@ -14,6 +14,8 @@ import pickle
 from skimage.transform import resize
 from common_functions import *
 from scipy import fftpack
+from yt.utilities.physical_constants import G
+from yt.units import pc,Myr,Msun,km,second
 
 def vk_spectrum(k,k0,kcore):
     A=(k0+kcore)**(-4/3)*k0**2
@@ -56,10 +58,13 @@ def Full_Negative(name):
 
     return r0,N0
 
-def Block_Negative(name):
+def Block_Negative(name,use_mass=False):
     tab=Table.read('Circulation_data/Percentiles/Negative/'+name+'-Negative',path='data')
     r0=tab['Resolution']
-    N0=tab['Number']
+    if use_mass:
+        N0=tab['Mass']
+    else:
+        N0=tab['Number']
 
     return r0,N0
 
@@ -161,8 +166,11 @@ def apply_turbulence(name,factor,R_cut,L,save=False,collapse=False):
 
     return  vort+factor*VORT
 
-def factor_error(vort,VORT,factor,x0,y0,R_cut):
-    new_vort=vort+factor*VORT
+def factor_error(vort,VORT,factor,x0,y0,R_cut,energy_loss=False,name=''):
+    ff=factor
+    if energy_loss:
+        ff=energy_loss_map(name,factor,len(VORT))
+    new_vort=vort+ff*VORT
     x,y,dx=Negative_resolution(new_vort,4e4,1.5e4)
     X=x0/x0[0]
     Y=y0
@@ -183,8 +191,12 @@ def factor_error(vort,VORT,factor,x0,y0,R_cut):
 
     return np.sqrt(np.mean((y-Y)**2))
 
-def factor_amplitude(vort,VORT,factor,y0):
-    new_vort=vort+factor*VORT
+def factor_amplitude(vort,VORT,factor,y0,energy_loss=False,name=''):
+    ff=factor
+    if energy_loss:
+        ff=energy_loss_map(name,factor,len(VORT))
+
+    new_vort=vort+ff*VORT
     x,y,dx=Negative_resolution(new_vort,4e4,1.5e4)
     return y[0]-y0
 
@@ -196,13 +208,14 @@ def load_VORT(name,N,L,R_cut,dx,noise):
     else:
         vx=template_snapshot_noise(name,L,R_cut,'x')
         vy=template_snapshot_noise(name,L,R_cut,'y')
+
     DVX=(vy[1:-1,2:]-vy[1:-1,:-2])/2
     DVY=(vx[2:,1:-1]-vx[:-2,1:-1])/2
     VORT=-DVY+DVX
     VORT*=dx
     return VORT
 
-def error_factor_for_rcut(name,L,R_cut,f1=1000,f2=0,method='half',noise='larson',collapse=False):
+def error_factor_for_rcut(name,L,R_cut,f1=1000,f2=0,method='half',noise='larson',collapse=False,energy_loss=False,use_mass=False):
     vort=np.load(name+'_omeg.npy')
     aux=np.load(name+'_vort.npy')
     vort*=aux.sum()/vort.sum()
@@ -214,25 +227,25 @@ def error_factor_for_rcut(name,L,R_cut,f1=1000,f2=0,method='half',noise='larson'
     N=len(vort)
     dx=L/N
     VORT=load_VORT(name,N,L,R_cut,dx,noise)
-    x0,y0=Block_Negative(name)
+    x0,y0=Block_Negative(name,use_mass)
     if noise!='larson':
         vort=vort[1:-1,1:-1]
     if method=='half':
         F1=f1
         F2=f2
-        delta1 = factor_amplitude(vort,VORT,F1,y0[0])
-        delta2 = factor_amplitude(vort,VORT,F2,y0[0])
+        delta1 = factor_amplitude(vort,VORT,F1,y0[0],energy_loss,name)
+        delta2 = factor_amplitude(vort,VORT,F2,y0[0],energy_loss,name)
         while delta1<0:
             F1*=1.1
-            delta1 = factor_amplitude(vort,VORT,F1,y0[0])
+            delta1 = factor_amplitude(vort,VORT,F1,y0[0],energy_loss,name)
         while delta2>0:
             F2*=0.9
-            delta2 = factor_amplitude(vort,VORT,F2,y0[0])
+            delta2 = factor_amplitude(vort,VORT,F2,y0[0],energy_loss,name)
 
         while (np.abs(F1-F2)/(F1+F2)>0.005):
             F3=0.5*(F1+F2)
 
-            delta3 = factor_amplitude(vort,VORT,F3,y0[0])
+            delta3 = factor_amplitude(vort,VORT,F3,y0[0],energy_loss,name)
 
             if delta1*delta3<0:
                 F2=F3
@@ -261,11 +274,11 @@ def error_factor_for_rcut(name,L,R_cut,f1=1000,f2=0,method='half',noise='larson'
             F3=F3-DD
             d1=d2
             d2=d3
-    error=factor_error(vort,VORT,F3,x0,y0,R_cut)
+    error=factor_error(vort,VORT,F3,x0,y0,R_cut,energy_loss,name)
 
     return error,F3
 
-def optimum_rcut(name,L,Rin,f1,f2,method,noise,N,dN,collapse=False):
+def optimum_rcut(name,L,Rin,f1,f2,method,noise,N,dN,collapse=False,energy_loss=False,use_mass=False):
 
     F1=f1
     F2=f2
@@ -274,7 +287,7 @@ def optimum_rcut(name,L,Rin,f1,f2,method,noise,N,dN,collapse=False):
     FC=np.zeros(N)
     for k in range(N):
         R=Rin+k*dN
-        d,FM=error_factor_for_rcut(name,L,R,F1,F2,method,noise,collapse)
+        d,FM=error_factor_for_rcut(name,L,R,F1,F2,method,noise,collapse,energy_loss,use_mass)
         ERR[k]=d
         RC[k]=R
         FC[k]=FM
@@ -291,11 +304,15 @@ def optimum_rcut(name,L,Rin,f1,f2,method,noise,N,dN,collapse=False):
         print(name+' IS HIGHER')
     return Rest,Fest
 
-def radial_rcut(name,L,R_cut,Nbins,noise,f1=50,f2=0):
+def radial_rcut(name,L,R_cut,Nbins,noise,f1=50,f2=0,collapse=False,energy_loss=False,use_mass=False):
     vort=np.load(name+'_omeg.npy')
     aux=np.load(name+'_vort.npy')
     vort*=aux.sum()/vort.sum()
     del aux
+    if collapse:
+        s1=np.load(name+'_sigma.npy')
+        s2=np.load(name+'_mass.npy')
+        vort*=s1/s2
     N=len(vort)
     dx=L/N
     VORT=load_VORT(name,N,L,R_cut,dx,noise)
@@ -303,7 +320,7 @@ def radial_rcut(name,L,R_cut,Nbins,noise,f1=50,f2=0):
     x=[]
     y=[]
     for j in range(Nbins):
-        element=interp_negative_bin(name,redges[j]*dx,redges[j+1]*dx)
+        element=interp_negative_bin(name,redges[j]*dx,redges[j+1]*dx,use_mass)
         x.append(element[0])
         y.append(element[1])
     x=np.array(x)
@@ -313,19 +330,41 @@ def radial_rcut(name,L,R_cut,Nbins,noise,f1=50,f2=0):
     for j in range(Nbins):
         F1=f1
         F2=f2
-        n1 = Negative_fraction_radii(vort+F1*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
-        n2 = Negative_fraction_radii(vort+F2*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
+        if energy_loss:
+            aux=energy_loss_map(name,F1,N)
+            n1 = Negative_fraction_radii(vort+aux*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
+            aux=energy_loss_map(name,F2,N)
+            n2 = Negative_fraction_radii(vort+aux*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
+            del aux
+        else:
+            n1 = Negative_fraction_radii(vort+F1*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
+            n2 = Negative_fraction_radii(vort+F2*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
         while n1<0:
             F1*=1.1
-            n1 = Negative_fraction_radii(vort+F1*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
+            if energy_loss:
+                aux=energy_loss_map(name,F1,N)
+                n1 = Negative_fraction_radii(vort+aux*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
+                del aux
+            else:
+                n1 = Negative_fraction_radii(vort+F1*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
         while n2>0:
             F2*=0.9
-            n2 = Negative_fraction_radii(vort+F2*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
+            if energy_loss:
+                aux=energy_loss_map(name,F2,N)
+                n2 = Negative_fraction_radii(vort+aux*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
+                del aux
+            else:
+                n2 = Negative_fraction_radii(vort+F2*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
 
         while ((F1-F2)/(F1+F2)>0.005):
 
             FM=0.5*(F1+F2)
-            nm=Negative_fraction_radii(vort+FM*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
+            if energy_loss:
+                aux=energy_loss_map(name,FM,N)
+                nm = Negative_fraction_radii(vort+aux*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
+                del aux
+            else:
+                nm=Negative_fraction_radii(vort+FM*VORT,Nbins,redges[j],redges[j+1])-y[j][0]
             if n1*nm>0:
                 F1=FM
                 n1=nm
@@ -333,11 +372,39 @@ def radial_rcut(name,L,R_cut,Nbins,noise,f1=50,f2=0):
                 F2=FM
                 n2=nm
         FAC[j]=FM
-        res, rcen, Neg, redges = Block_Negative_radii(vort+FM*VORT,Nbins)
+        if energy_loss:
+            aux=energy_loss_map(name,FM,N)
+            res, rcen, Neg, redges = Block_Negative_radii(vort+aux*VORT,Nbins)
+        else:
+            res, rcen, Neg, redges = Block_Negative_radii(vort+FM*VORT,Nbins)
 
         ERR[j]=error_two_curves(x[j]*2,res*dx,y[j],Neg[j,:])
 
     return FAC,ERR
+
+def optimum_radial_rcut(name,L,R_cut,Nbins,noise,N,dN,f1=50,f2=0,collapse=False,energy_loss=False,use_mass=False):
+    Radius=np.zeros(N)
+    Factors=np.zeros((N,Nbins))
+    Errors=np.zeros((N,Nbins))
+    redges = np.linspace(0,0.75,Nbins+1)
+    rcen   = 0.25*(redges[:-1]+redges[1:])*L
+
+    for k in range(N):
+        R=R_cut+k*dN
+        Radius[k]=R
+        x,y=radial_rcut(name,L,R,Nbins,noise,f1,f2,collapse,energy_loss,use_mass)
+        Factors[k,:]=x
+        Errors[k,:]=y
+
+    fx=np.zeros(Nbins)
+    rx=np.zeros(Nbins)
+    for j in range(Nbins):
+        err=Errors[:,j]
+        minimo=np.where(err==err.min())[0][0]
+        fx[j]=Factors[minimo,j]
+        rx[j]=Radius[minimo]
+
+    return rcen,fx,rx
 
 def error_two_curves(x1,x2,y1,y2):
     xmin=max(x1.min(),x2.min())
@@ -424,13 +491,15 @@ def Block_Negative_redges(N,Nbins):
         redges=np.array([0,0.5*N*0.75])
     return redges
 
-def interp_negative_bin(name,rmin,rmax):
+def interp_negative_bin(name,rmin,rmax,use_mass):
     f    = open("Temp_Files/"+name+"-All-Radial", "rb")
     res  = pickle.load(f)
     rcen = pickle.load(f)
     Neg  = pickle.load(f)
+    Mass  = pickle.load(f)
     f.close()
-
+    if use_mass:
+        Neg=Mass
     redges=0.5*(rcen[1:]+rcen[:-1])
 
     redges=np.insert(redges,0,0)
@@ -468,3 +537,42 @@ def interp_negative_bin(name,rmin,rmax):
         temp[ij]=(Neg[il:iu+1,ij]*pesos).sum()
 
     return res, temp
+
+def energy_loss(name,L):
+    if os.path.isfile(name+'_energy_loss.npy'):
+        EL=np.load(name+'_energy_loss.npy')
+        return EL
+    sigma=np.load(name+'_sigma.npy')
+    mass=np.load(name+'_mass.npy')
+    omega=np.load(name+'_omeg.npy')
+    vort=np.load(name+'_vort.npy')
+
+    N=len(omega)
+    dx=L/N
+    A=dx**2
+
+    mass=mass*Msun/pc**2
+    sigma=sigma*Msun/pc**2
+
+    vort=vort*pc**2/Myr
+    omega=omega*pc**2/Myr
+    A=A*pc**2
+
+    v2=0.977813106*omega**2*(1.0- vort*mass/(omega*sigma))/A
+    v2.convert_to_units('km**2/s**2')
+    v2[v2<np.percentile(v2,0.1)]=np.percentile(v2,1)
+    v2[v2>np.percentile(v2,99)]=np.percentile(v2,99)
+    noise=np.random.uniform(-1,1,(N,N))*v2
+
+    np.save(name+'_energy_loss',noise)
+    return noise
+
+def energy_loss_map(name,factor,N):
+    ff=factor
+
+    EL=np.load(name+'_energy_loss.npy')
+    ff=np.ones((N,N))*ff
+    ff=ff**2-EL
+    ff[ff<0]=0
+    ff=np.sqrt(ff)
+    return ff
