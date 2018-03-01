@@ -236,12 +236,6 @@ def factor_error(vort,VORT,L,factor,x0,y0,R_cut,energy_loss=False,name=''):
     fun=interp1d(x,y)
     y=fun(X)
 
-    plt.plot(X,y)
-    plt.plot(X,Y)
-    plt.xscale('log')
-    plt.savefig('Temp_Figures/Negative_Rcut_%04d' %R_cut+'_factor_%05.2f' %factor+'.png')
-    plt.close()
-
     return np.sqrt(np.mean((y-Y)**2))
 
 def factor_amplitude(vort,VORT,factor,y0,energy_loss=False,name=''):
@@ -695,7 +689,7 @@ def energy_loss(name,L):
 def energy_loss_map(name,factor,N):
     ff=factor
 
-    EL=np.load(name+'_energy_loss.npy')
+    EL=energy_loss(name,L)
     ff=np.ones((N,N))*ff
     ff=ff**2-EL
     ff[ff<0]=0
