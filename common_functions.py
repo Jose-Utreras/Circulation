@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+import fileinput
 
 def Heaviside(x):
     return np.piecewise(x,[x<0,x>=0], [lambda x: 0, lambda x: 1])
@@ -29,3 +30,8 @@ def radial_map(mapa):
     R=np.sqrt(X**2+Y**2)
 
     return R
+
+def change_word_infile(filename,text_to_search,replacement_text):
+    with fileinput.FileInput(filename, inplace=True, backup='.bak') as file:
+        for line in file:
+            print(line.replace(text_to_search, replacement_text), end='')
