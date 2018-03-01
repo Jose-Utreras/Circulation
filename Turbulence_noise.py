@@ -721,3 +721,28 @@ def compare_optimum_Rcut(name,L,collapse=False,energy_loss=False,use_mass=False,
     plt.xscale('log')
     plt.show(block=True)
     plt.close()
+
+def write_Rcut_Vel(name,kt,kd):
+    if os.path.isfile('Negative_Rcut_Vel'):
+        pass
+    else:
+        f1=open('Negative_Rcut_Vel','w')
+        f1.close()
+    empty = os.stat('Negative_Rcut_Vel').st_size == 0
+    if empty:
+        f1=open('Negative_Rcut_Vel','a')
+        f1.write(name+"\t %07.2f \t" %kt+ "%07.2f \n " %kd)
+        f1.close()
+    else:
+        f1=open('Negative_Rcut_Vel','r')
+        switch=True
+        for x in f1:
+            xp=x.split('\t')
+            if xp[0]==name:
+                switch=False
+
+        f1.close()
+        if switch:
+            f1=open('Negative_Rcut_Vel','a')
+            f1.write(name+"\t %07.2f \t" %kt+ "%07.2f \n " %kd)
+            f1.close()

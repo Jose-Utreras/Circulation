@@ -32,6 +32,7 @@ my_storage = {}
 
 Radius=[]
 Velocity=[]
+Names=[]
 for sto, name in yt.parallel_objects(names, Ncores, storage = my_storage):
 
     output = optimum_rcut(name,L,R_cut,f1,f2,'half','larson',N,dN,coll,energy,mass)
@@ -42,8 +43,27 @@ if yt.is_root():
     for fn, vals in sorted(my_storage.items()):
         Radius.append(vals[0])
         Velocity.append(vals[1])
+        Names.append(fn)
     Radius=np.array(Radius)
     Velocity=np.array(Velocity)
 
+Rcen=[]
+Radius=[]
+Velocity=[]
+Names=[]
+for sto, name in yt.parallel_objects(names, Ncores, storage = my_storage):
+
+    output = a,b,c=optimum_radial_rcut(name,L,R_cut,Nbins,'larson',N,dN,f1,f2,coll,energy,mass)
+    sto.result_id = name
+    sto.result = output
+
+if yt.is_root():
+    for fn, vals in sorted(my_storage.items()):
+        Rcen.append(vals[0])
+        Velocity.append(vals[1])
+        Radius.append(vals[2])
+        Names.append(fn)
+    Radius=np.array(Radius)
+    Velocity=np.array(Velocity)
     print(Radius)
     print(Velocity)
