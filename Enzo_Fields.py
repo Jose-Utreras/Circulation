@@ -14,9 +14,10 @@ from yt.fields.derived_field import \
     ValidateParameter, \
     ValidateSpatial, \
     NeedsParameter
-
+import h5py
 from yt.funcs import \
     just_one
+from common_functions import *
 
 sl_left = slice(None, -2, None)
 sl_right = slice(2, None, None)
@@ -442,3 +443,48 @@ def Sound_speed_map(name):
     np.save(name+'_cs_2',cs_2)
     np.save(name+'_cs_rep',cs_rep)
     np.save(name+'_cs_rep_2',cs_rep_2)
+
+def Modify_Output(name,fields,factors,operations):
+    """
+    Allowed Enzo_Fields
+    Density / Metal_Density / Temperature / TotalEnergy
+    x-velocity / y-velocity / z-velocity
+    """
+    data='Sims/'+name+'/G-'+name[-4:]
+    ds=yt.load(data)
+
+    out_basename = 'Sims/ModifiedRestart/Mod_'+name
+    if os.path.isdir(out_basename):
+        pass
+    else:
+        os.system('mkdir '+out_basename)
+    for  g in ds.index.grids:
+        out_file_name = "%s/%s"%(out_basename , g.filename.split("/")[-1])
+
+        in_cpu = h5py.File(g.filename,'r')
+        in_group = in_cpu['Grid%08d'%g.id]
+        out_cpu = h5py.File(out_file_name,'a')
+        out_group = out_cpu.require_group( 'Grid%08d'%g.id )
+
+        for in_field in in_group:
+            out_group.require_dataset(name=in_field,shape=in_group[in_field].shape,dtype=in_group[in_field].dtype)
+            this_array = in_group[in_field][:]
+            if in_field in fields:
+                loc=int(np.where(fields==in_field,1,0))
+                factor=factors[loc]
+                operation=operations[loc]
+                if operation=='addition':
+                    this_array += factor
+                if operation=='product':
+                    this_array *= factor
+            out_group[in_field][:] = this_array
+        out_cpu.close()
+        in_cpu.close()
+    lista=glob.glob('Sims/'+name+'/*')
+    for li in lista:
+        if 'cpu' not in li:
+            dest="%s/"%(out_basename)
+            os.system('cp '+li+' '+dest)
+    for li in lista:
+        if ('cpu' not in li)&('hdf' not in li):
+            change_word_infile(li,name,'Mod_'+name)
