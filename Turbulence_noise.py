@@ -51,6 +51,59 @@ def Negative_resolution(mapa,L,rho):
 
     return res, Negative ,dx
 
+def Percentile_resolution(mapa,L,rho,PP,weights='None'):
+
+    N=len(mapa)
+    dx=L/N
+    res=list((10**np.linspace(0,np.log10(N),100)+1e-5))
+    res.sort()
+    res=np.array(res).astype(int)
+    res=np.array(list(set(res)))
+    res.sort()
+
+    res=np.array(list(set((N/res).astype(int))))
+    res.sort()
+    Per=np.zeros_like(res,dtype=float)
+
+    if weights=='None':
+        for k,R in enumerate(res):
+            fake=block_reduce(mapa, R, func=np.sum)
+            N1=len(fake)
+            radial=radial_map(fake)
+            fake=fake.ravel()
+            radial=radial.ravel()*L/N1
+            try:
+                fake=fake[radial<rho]
+                Per[k]=np.percentile(fake,PP)
+            except:
+                Per[k]=0
+    else:
+        for k,R in enumerate(res):
+            fake=block_reduce(mapa, R, func=np.sum)
+            fake2=block_reduce(mapa, R, func=np.sum)
+            N1=len(fake)
+            radial=radial_map(fake)
+            fake=fake.ravel()
+            fake2=fake2.ravel()
+            radial=radial.ravel()*L/N1
+            try:
+                field=fake[radial<rho]
+                mass=fake2[radial<rho]
+
+                mass    = mass[field.argsort()]
+                field   = field[field.argsort()]
+                field   = np.insert(field,0,field[-1])
+                mass    = np.insert(mass,0,0)
+                mass=np.cumsum(mass)
+                mass/=mass[-1]
+                fm=interp1d(mass,field)
+                Per[k]=fm(PP*0.01)
+            except:
+                Per[k]=0
+
+
+    return res, Per ,dx
+
 def Full_Negative(name):
     tab=Table.read('Circulation_data/Full-Percentiles/Negative/'+name+'-Negative',path='data')
     r0=tab['Resolution']*2
@@ -166,12 +219,12 @@ def apply_turbulence(name,factor,R_cut,L,save=False,collapse=False):
 
     return  vort+factor*VORT
 
-def factor_error(vort,VORT,factor,x0,y0,R_cut,energy_loss=False,name=''):
+def factor_error(vort,VORT,L,factor,x0,y0,R_cut,energy_loss=False,name=''):
     ff=factor
     if energy_loss:
         ff=energy_loss_map(name,factor,len(VORT))
     new_vort=vort+ff*VORT
-    x,y,dx=Negative_resolution(new_vort,4e4,1.5e4)
+    x,y,dx=Negative_resolution(new_vort,L,1.5e4)
     X=x0/x0[0]
     Y=y0
     xmin=max(x.min(),X.min())
@@ -200,7 +253,7 @@ def factor_amplitude(vort,VORT,factor,y0,energy_loss=False,name=''):
     x,y,dx=Negative_resolution(new_vort,4e4,1.5e4)
     return y[0]-y0
 
-def load_VORT(name,N,L,R_cut,dx,noise):
+def load_VORT(name,N,L,R_cut,noise):
     dx=L/N
     if noise=='larson':
         vx=template_larson_noise(N+2,L,R_cut,'x')
@@ -215,6 +268,32 @@ def load_VORT(name,N,L,R_cut,dx,noise):
     VORT*=dx
     return VORT
 
+def apply_optimum_rcut(name,L,R_cut,F,noise,collapse=False,energy_loss=False,use_mass=False):
+    vort=np.load(name+'_omeg.npy')
+    aux=np.load(name+'_vort.npy')
+    vort*=aux.sum()/vort.sum()
+    del aux
+    if collapse:
+        s1=np.load(name+'_sigma.npy')
+        s2=np.load(name+'_mass.npy')
+        vort*=s1/s2
+    N=len(vort)
+    VORT=load_VORT(name,N,L,R_cut,noise)
+    ff=F
+    if energy_loss:
+        ff=energy_loss_map(name,F,N)
+
+    new_vort=vort+ff*VORT
+    extra=''
+    if collapse:
+        extra+='_c'
+    if energy_loss:
+        extra+='_e'
+    if use_mass:
+        extra+='_m'
+    np.save(name+'_optimum_Rcut'+extra,new_vort)
+    return True
+
 def error_factor_for_rcut(name,L,R_cut,f1=1000,f2=0,method='half',noise='larson',collapse=False,energy_loss=False,use_mass=False):
     vort=np.load(name+'_omeg.npy')
     aux=np.load(name+'_vort.npy')
@@ -226,7 +305,7 @@ def error_factor_for_rcut(name,L,R_cut,f1=1000,f2=0,method='half',noise='larson'
         vort*=s1/s2
     N=len(vort)
     dx=L/N
-    VORT=load_VORT(name,N,L,R_cut,dx,noise)
+    VORT=load_VORT(name,N,L,R_cut,noise)
     x0,y0=Block_Negative(name,use_mass)
     if noise!='larson':
         vort=vort[1:-1,1:-1]
@@ -274,7 +353,7 @@ def error_factor_for_rcut(name,L,R_cut,f1=1000,f2=0,method='half',noise='larson'
             F3=F3-DD
             d1=d2
             d2=d3
-    error=factor_error(vort,VORT,F3,x0,y0,R_cut,energy_loss,name)
+    error=factor_error(vort,VORT,L,F3,x0,y0,R_cut,energy_loss,name)
 
     return error,F3
 
@@ -315,7 +394,7 @@ def radial_rcut(name,L,R_cut,Nbins,noise,f1=50,f2=0,collapse=False,energy_loss=F
         vort*=s1/s2
     N=len(vort)
     dx=L/N
-    VORT=load_VORT(name,N,L,R_cut,dx,noise)
+    VORT=load_VORT(name,N,L,R_cut,noise)
     redges=Block_Negative_redges(N,Nbins)
     x=[]
     y=[]
@@ -405,6 +484,52 @@ def optimum_radial_rcut(name,L,R_cut,Nbins,noise,N,dN,f1=50,f2=0,collapse=False,
         rx[j]=Radius[minimo]
 
     return rcen,fx,rx
+
+def apply_optimum_radial_rcut(name,L,R_cut,F,noise,collapse=False,energy_loss=False,use_mass=False):
+    vort=np.load(name+'_omeg.npy')
+    aux=np.load(name+'_vort.npy')
+    vort*=aux.sum()/vort.sum()
+    del aux
+    if collapse:
+        s1=np.load(name+'_sigma.npy')
+        s2=np.load(name+'_mass.npy')
+        vort*=s1/s2
+    N=len(vort)
+    dx=L/N
+    new=np.zeros_like(vort)
+    radius=radial_map(new)
+    Nbins=len(R_cut)
+    redges=Block_Negative_redges(N,Nbins)
+    for j in range(Nbins):
+        VORT=load_VORT(name,N,L,R_cut[j],noise)
+        if energy_loss:
+            aux=energy_loss_map(name,F[j],N)
+            mvort=vort+aux*VORT
+        else:
+            mvort=vort+F[j]*VORT
+        ring=(radius>=redges[j])&(radius<redges[j+1])
+
+        new[ring]=mvort[ring]
+
+    VORT=load_VORT(name,N,L,R_cut[-1],noise)
+
+    if energy_loss:
+        aux=energy_loss_map(name,F[-1],N)
+        mvort=vort+aux*VORT
+    else:
+        mvort=vort+F[-1]*VORT
+    ring=radius>redges[-1]
+    new[ring]=mvort[ring]
+
+    extra=''
+    if collapse:
+        extra+='_c'
+    if energy_loss:
+        extra+='_e'
+    if use_mass:
+        extra+='_m'
+    np.save(name+'_optimum_radial_Rcut'+extra,new)
+    return True
 
 def error_two_curves(x1,x2,y1,y2):
     xmin=max(x1.min(),x2.min())
@@ -576,3 +701,29 @@ def energy_loss_map(name,factor,N):
     ff[ff<0]=0
     ff=np.sqrt(ff)
     return ff
+
+def compare_optimum_Rcut(name,L,collapse=False,energy_loss=False,use_mass=False,radial=False):
+    rho=1.5e4
+    extra=''
+    if collapse:
+        extra+='_c'
+    if energy_loss:
+        extra+='_e'
+    if use_mass:
+        extra+='_m'
+
+    mapa0=np.load(name+'_vort.npy')
+
+
+    x0,y0,dx0=Percentile_resolution(mapa0,L,rho,84)
+    if radial:
+        mapa1=np.load(name+'_optimum_radial_Rcut'+extra+'.npy')
+    else:
+        mapa1=np.load(name+'_optimum_Rcut'+extra+'.npy')
+    x1,y1,dx1=Percentile_resolution(mapa1,L,rho,84)
+
+    plt.plot(x0,y0/x0**2)
+    plt.plot(x1,y1/x1**2)
+    plt.xscale('log')
+    plt.show(block=True)
+    plt.close()
