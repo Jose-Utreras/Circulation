@@ -722,7 +722,7 @@ def compare_optimum_Rcut(name,L,collapse=False,energy_loss=False,use_mass=False,
     plt.show(block=True)
     plt.close()
 
-def write_Rcut_Vel(name,kt,kd):
+def write_Rcut_Vel(name,Rcut,Vel):
     if os.path.isfile('Negative_Rcut_Vel'):
         pass
     else:
@@ -731,7 +731,7 @@ def write_Rcut_Vel(name,kt,kd):
     empty = os.stat('Negative_Rcut_Vel').st_size == 0
     if empty:
         f1=open('Negative_Rcut_Vel','a')
-        f1.write(name+"\t %07.2f \t" %kt+ "%07.2f \n " %kd)
+        f1.write(name+"\t %07.2f \t" %Rcut+ "%07.2f \n " %Vel)
         f1.close()
     else:
         f1=open('Negative_Rcut_Vel','r')
@@ -744,5 +744,47 @@ def write_Rcut_Vel(name,kt,kd):
         f1.close()
         if switch:
             f1=open('Negative_Rcut_Vel','a')
-            f1.write(name+"\t %07.2f \t" %kt+ "%07.2f \n " %kd)
+            f1.write(name+"\t %07.2f \t" %Rcut+ "%07.2f \n " %Vel)
+            f1.close()
+
+def write_Rcut_Vel_Radius(name,Rcut,Vel,Radius):
+    Nbins=len(Radius)
+    if os.path.isfile(name+'_Negative_Rcut_Vel'):
+        pass
+    else:
+        f1=open(name+'_Negative_Rcut_Vel','w')
+        f1.close()
+    empty = os.stat(name+'_Negative_Rcut_Vel').st_size == 0
+
+    if empty:
+        f1=open(name+'_Negative_Rcut_Vel','a')
+        f1.write('%02d' %Nbins)
+        for kt in Rcut:
+            f1.write('\t %07.2f' %kt)
+        for kt in Vel:
+            f1.write('\t %07.2f' %kt)
+        for kt in Radius:
+            f1.write('\t %08.2f' %kt)
+        f1.write('\n')
+        f1.close()
+    else:
+        number='%02d' %Nbins
+        f1=open(name+'_Negative_Rcut_Vel','r')
+        switch=True
+        for x in f1:
+            xp=x.split('\t')
+            if xp[0]==number:
+                switch=False
+
+        f1.close()
+        if switch:
+            f1=open(name+'_Negative_Rcut_Vel','a')
+            f1.write('%02d' %Nbins)
+            for kt in Rcut:
+                f1.write('\t %07.2f' %kt)
+            for kt in Vel:
+                f1.write('\t %07.2f' %kt)
+            for kt in Radius:
+                f1.write('\t %08.2f' %kt)
+            f1.write('\n')
             f1.close()

@@ -1,6 +1,8 @@
 *npy
 /Temp_Files
 /Circulation_data
+<<<<<<< HEAD
+=======
 /__pycache__
 *Negative_Fit
 /Examples
@@ -11,4 +13,8 @@ Test.py
 /Temp_Figures
 /.ipynb_checkpoints
 /Sims
+<<<<<<< HEAD
 Test2.py
+=======
+>>>>>>> 50577503490af1bf851402705eea5d24cf51d9d4
+>>>>>>> 54914eab019792ee976979eedc00088955564b33
