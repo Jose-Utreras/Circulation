@@ -27,9 +27,9 @@ Ncores=1
 names=glob.glob(name+'*_vort.npy')
 for i,val in enumerate(names):
     names[i]=val.split('_')[0]
+
+
 my_storage = {}
-
-
 Radius=[]
 Velocity=[]
 Names=[]
@@ -47,6 +47,11 @@ if yt.is_root():
     Radius=np.array(Radius)
     Velocity=np.array(Velocity)
 
+    for n,r,v in zip(Names,Radius,Velocity):
+        write_Rcut_Vel(n,r,v)
+
+
+my_storage = {}
 Rcen=[]
 Radius=[]
 Velocity=[]
@@ -63,7 +68,6 @@ if yt.is_root():
         Velocity.append(vals[1])
         Radius.append(vals[2])
         Names.append(fn)
-    Radius=np.array(Radius)
-    Velocity=np.array(Velocity)
-    print(Radius)
-    print(Velocity)
+
+    for n,r,v,rb in zip(Names,Radius,Velocity,Rcen):
+        write_Rcut_Vel_Radius(n,r,v,rb)
