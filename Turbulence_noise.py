@@ -21,6 +21,10 @@ def vk_spectrum(k,k0,kcore):
     A=(k0+kcore)**(-4/3)*k0**2
     return np.piecewise(k,[k>=k0,k<k0],[lambda k: A/k**2, lambda k: (k+kcore)**(-4/3)])
 
+def two_slopes(k,n1,n2,k0):
+    A=k0**(n1-n2)
+    return np.piecewise(k,[k<k0,k>=k0],[lambda k: A/k**n1, lambda k: 1.0/k**n2])
+
 def Negative_resolution(mapa,L,rho):
 
     N=len(mapa)
@@ -50,6 +54,34 @@ def Negative_resolution(mapa,L,rho):
 
 
     return res, Negative ,dx
+
+def Sum_resolution(mapa,L,rho):
+
+    N=len(mapa)
+    res=list((10**np.linspace(0,np.log10(N),100)+1e-5))
+    res.sort()
+    res=np.array(res).astype(int)
+    res=np.array(list(set(res)))
+    res.sort()
+    dx=L/N
+    res=np.array(list(set((N/res).astype(int))))
+    res.sort()
+    Sum=np.zeros_like(res,dtype=float)
+
+
+    for k,R in enumerate(res):
+        fake=block_reduce(mapa, R, func=np.sum)
+        N1=len(fake)
+        radial=radial_map(fake)
+        fake=fake.ravel()
+        radial=radial.ravel()*L/N1
+        try:
+            fake=fake[radial<rho]
+            Sum[k]=np.abs(fake).sum()
+        except:
+            Sum[k]=0
+
+    return res, Sum
 
 def Percentile_resolution(mapa,L,rho,PP,weights='None'):
 
@@ -103,6 +135,33 @@ def Percentile_resolution(mapa,L,rho,PP,weights='None'):
 
 
     return res, Per ,dx
+
+def Percentile_profile(mapa,PP):
+
+    N=len(mapa)
+    res=list((10**np.linspace(0,np.log10(N),100)+1e-5))
+    res.sort()
+    res=np.array(res).astype(int)
+    res=np.array(list(set(res)))
+    res.sort()
+
+    res=np.array(list(set((N/res).astype(int))))
+    res.sort()
+    Per=np.zeros_like(res,dtype=float)
+
+
+    for k,R in enumerate(res):
+        fake=block_reduce(mapa, R, func=np.sum)
+        N1=len(fake)
+        fake=fake.ravel()
+        try:
+
+            Per[k]=np.percentile(fake,PP)
+        except:
+            Per[k]=0
+
+
+    return res, Per
 
 def Full_Negative(name):
     tab=Table.read('Circulation_data/Full-Percentiles/Negative/'+name+'-Negative',path='data')
@@ -236,6 +295,11 @@ def factor_error(vort,VORT,L,factor,x0,y0,R_cut,energy_loss=False,name=''):
     fun=interp1d(x,y)
     y=fun(X)
 
+    plt.plot(X,Y)
+    plt.plot(X,y)
+    plt.xscale('log')
+    plt.savefig('Temp_Files/Figures/Negative_Rcut_%07.2f' %R_cut+'_fc_%05.2f'%factor+'.png')
+    plt.close()
     return np.sqrt(np.mean((y-Y)**2))
 
 def factor_amplitude(vort,VORT,factor,y0,energy_loss=False,name=''):
@@ -709,17 +773,65 @@ def compare_optimum_Rcut(name,L,collapse=False,energy_loss=False,use_mass=False,
     mapa0=np.load(name+'_vort.npy')
 
 
-    x0,y0,dx0=Percentile_resolution(mapa0,L,rho,84)
+
     if radial:
         mapa1=np.load(name+'_optimum_radial_Rcut'+extra+'.npy')
     else:
         mapa1=np.load(name+'_optimum_Rcut'+extra+'.npy')
+
+    x0,y0,dx0=Percentile_resolution(mapa0,L,rho,84)
     x1,y1,dx1=Percentile_resolution(mapa1,L,rho,84)
 
-    plt.plot(x0,y0/x0**2)
-    plt.plot(x1,y1/x1**2)
+    plt.plot(x0,y0/x0**2,color='#1f77b4',linestyle=':')
+    plt.plot(x1,y1/x1**2,color='#ff7f0e',linestyle=':')
+
+    x0,y0,dx0=Percentile_resolution(mapa0,L,rho,50)
+    x1,y1,dx1=Percentile_resolution(mapa1,L,rho,50)
+
+    plt.plot(x0,y0/x0**2,color='#1f77b4',linestyle='-')
+    plt.plot(x1,y1/x1**2,color='#ff7f0e',linestyle='-')
+
+    x0,y0,dx0=Percentile_resolution(mapa0,L,rho,16)
+    x1,y1,dx1=Percentile_resolution(mapa1,L,rho,16)
+
+    plt.plot(x0,y0/x0**2,color='#1f77b4',linestyle=':')
+    plt.plot(x1,y1/x1**2,color='#ff7f0e',linestyle=':')
     plt.xscale('log')
     plt.show(block=True)
+    plt.close()
+
+def compare_noise_circulation(name,L,rho,R_cut,F,noise,collapse=False,energy_loss=False,use_mass=False):
+    vort=np.load(name+'_omeg.npy')
+    aux=np.load(name+'_vort.npy')
+    vort*=aux.sum()/vort.sum()
+    del aux
+    if collapse:
+        s1=np.load(name+'_sigma.npy')
+        s2=np.load(name+'_mass.npy')
+        vort*=s1/s2
+    N=len(vort)
+    dx=L/N
+    VORT=load_VORT(name,N,L,R_cut,noise)
+    ff=F
+    if energy_loss:
+        ff=energy_loss_map(name,F,N)
+
+    VORT=ff*VORT
+
+    res,v1=Sum_resolution(VORT,L,rho)
+    res,v2=Sum_resolution(vort,L,rho)
+
+    cuo=v1/(v2+v1)
+    fun=interp1d(cuo,res*dx)
+    plt.plot(res*dx,cuo)
+    plt.axvline(R_cut)
+    plt.axhline(0.5,linestyle='--',linewidth=2)
+    plt.axvline(fun(0.5),linestyle='--',linewidth=2)
+    plt.ylabel(r'$\vert \Gamma_{\sigma}\vert/\vert\Gamma_{\Omega}\vert$',usetex=True,size=15)
+    plt.xlabel(r'$\rm Resolution\ [pc]$',usetex=True,size=15)
+    plt.xscale('log')
+    plt.subplots_adjust(left=0.11, right=0.95, top=0.95, bottom=0.15)
+    plt.savefig('Temp_Files/Figures/'+name+'_Circulation_comparison.png')
     plt.close()
 
 def write_Rcut_Vel(name,Rcut,Vel):

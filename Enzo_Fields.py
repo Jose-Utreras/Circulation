@@ -488,3 +488,34 @@ def Modify_Output(name,fields,factors,operations):
     for li in lista:
         if ('cpu' not in li)&('hdf' not in li):
             change_word_infile(li,name,'Mod_'+name)
+
+def Integrated_vz(name,L,H):
+    if os.path.isfile(name+'_vz_integrated.npy'):
+        return True
+    data='Sims/'+name+'/G-'+name[-4:]
+    ds=yt.load(data)
+
+    L=L*kpc
+    H=H*1000
+    grids=ds.refine_by**ds.index.max_level*ds.domain_dimensions[0]
+
+    DX=ds.arr(1, 'code_length')
+    DX.convert_to_units('pc')
+    dr=DX/grids
+
+    dd=ds.all_data()
+    print('### Projection ###')
+    disk_dd = dd.cut_region(["obj['Disk_H'].in_units('pc') < "+str(H)+""])
+    proj = ds.proj('vz', 2,data_source=disk_dd,weight_field='density')
+
+
+    width = (float(L), 'kpc')
+    NN=int(L/dr)
+    dA=((L/NN)**2).in_units('pc**2')
+
+    res = [NN, NN]
+    frb = proj.to_frb(width, res, center=[0.5,0.5,0.5])
+
+    vz=frb['vz'].in_units('km/s')
+
+    np.save(name+'_vz_integrated.npy',vz)
