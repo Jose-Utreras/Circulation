@@ -49,7 +49,7 @@ def Noise(N,n1,n2,kc):
 def Vorticity(N,n1,n2,kc):
     vx=Noise(N,n1,n2,kc)
     vy=Noise(N,n1,n2,kc)
-    dx=1.0/(N+2)
+    dx=1.0/N
     DVX=(vy[1:-1,2:]-vy[1:-1,:-2])/2
     DVY=(vx[2:,1:-1]-vx[:-2,1:-1])/2
     VORT=-DVY+DVX
@@ -59,6 +59,12 @@ def Vorticity(N,n1,n2,kc):
 def add_vorticity(mapa,n1,n2,kc,factor):
     N=len(mapa)
     new_map=mapa+factor*Vorticity(N,n1,n2,kc)
+    return new_map
+
+def add_vorticity_to_map(mapa,L,n1,n2,kc,factor):
+    N=len(mapa)
+    dA=(L/N)**2
+    new_map=mapa+factor*Vorticity(N,n1,n2,kc)*1.02269032*dA/L
     return new_map
 
 def Percentile_profile(mapa,PP):
@@ -84,6 +90,36 @@ def Percentile_profile(mapa,PP):
             Per[k]=np.percentile(fake,PP)
         except:
             Per[k]=0
+
+
+    return res, Per
+
+def Percentile_profiles(mapa,PP):
+
+    N=len(mapa)
+    res=list((10**np.linspace(0,np.log10(N),100)+1e-5))
+    res.sort()
+    res=np.array(res).astype(int)
+    res=np.array(list(set(res)))
+    res.sort()
+
+    res=np.array(list(set((N/res).astype(int))))
+    res.sort()
+
+    N1=len(res)
+    N2=len(PP)
+    Per=np.zeros((N1,N2),dtype=float)
+
+
+    for k,R in enumerate(res):
+        fake=block_reduce(mapa, R, func=np.sum)/R**2
+        N1=len(fake)
+        fake=fake.ravel()
+        for j in range(N2):
+            try:
+                Per[k][j]=np.percentile(fake,PP[j])
+            except:
+                Per[k][j]=0
 
 
     return res, Per
@@ -185,6 +221,122 @@ def best_spacing(vmin,vmax,func_obs,func_pro):
 
     return x[y==y.min()][0]
 
+def get_noise_map(mapa):
+    N=len(mapa)
+    R=2*radial_map_N(N,N)/N
+    h=2*(np.percentile(mapa,75)-np.percentile(mapa,25))/N**(1.0/3.0)
+    Nbins=np.percentile(mapa,99.9)-np.percentile(mapa,0.1)
+    Nbins=2*int(Nbins/h)
+    Nbins=min(Nbins,int(N/3))
+    Redges=np.linspace(0,R.max(),Nbins+1)
+    Rcen=0.5*(Redges[1:]+Redges[:-1])
+
+    A=np.zeros(Nbins)
+    B=np.zeros(Nbins)
+    C=np.zeros(Nbins)
+    for k in range(Nbins):
+        ring=(Redges[k]<=R)&(R<Redges[k+1])
+        yaux=mapa[ring].ravel()
+        raux=R[ring].ravel()
+        yaux=yaux[raux.argsort()]
+        raux=raux[raux.argsort()]
+        popt, pcov = curve_fit(square_function, raux, yaux)
+        A[k]=popt[0]
+        B[k]=popt[1]
+        C[k]=popt[2]
+
+    xtest=np.linspace(0,1.6,100000)
+    ytest=np.zeros_like(xtest)
+
+    for k in range(Nbins+1):
+        if k==0:
+            x2=Rcen[k]
+            kregion=xtest<x2
+            a2,b2,c2=A[k],B[k],C[k]
+            d2=x2-xtest[kregion]
+            f2=a2*xtest[kregion]**2+b2*xtest[kregion]+c2
+            ytest[kregion]=f2
+
+        elif k==Nbins:
+            x1=Rcen[k-1]
+            kregion=x1<xtest
+            a1,b1,c1=A[k-1],B[k-1],C[k-1]
+            d1=xtest[kregion]-x1
+            f1=a1*xtest[kregion]**2+b1*xtest[kregion]+c1
+            ytest[kregion]=f1
+        else:
+            x1=Rcen[k-1]
+            x2=Rcen[k]
+            kregion=(x1<xtest)&(x2>xtest)
+            a1,b1,c1=A[k-1],B[k-1],C[k-1]
+            a2,b2,c2=A[k],B[k],C[k]
+
+            d1=xtest[kregion]-x1
+            d2=x2-xtest[kregion]
+            D=d1+d2
+            f1=a1*xtest[kregion]**2+b1*xtest[kregion]+c1
+            f2=a2*xtest[kregion]**2+b2*xtest[kregion]+c2
+            ytest[kregion]=(f1*d2+f2*d1)/D
+
+
+
+    f3=interp1d(xtest,ytest)
+    Y3=np.zeros(Nbins)
+
+    for k in range(Nbins):
+        ring=(Redges[k]<=R)&(R<Redges[k+1])
+        yaux=mapa[ring]
+        raux=R[ring]
+
+
+        Y3[k]=np.std(yaux-f3(raux))
+
+    Rcen=np.insert(Rcen,0,2*Rcen[0]-Rcen[1])
+    Rcen=np.insert(Rcen,len(Rcen),np.sqrt(2)*1.1)
+
+    Y3=Y3/np.median(Y3)
+    Y3=np.insert(Y3,0,2*Y3[0]-Y3[1])
+    Y3=np.insert(Y3,len(Y3),Y3[-1])
+    F3=interp1d(Rcen,Y3)
+
+
+    mapa3=(mapa-f3(R))/F3(R)
+
+    x1=1.0
+    x2=1.1
+    x3=1.2
+
+    f1=np.std(mapa-x1*mapa3)
+    f2=np.std(mapa-x2*mapa3)
+
+    for k in range(10):
+        f3=np.std(mapa-x3*mapa3)
+        df=(f3-f2)/(x3-x2)
+        ddf=2*(df-(f2-f1)/(x2-x1))/(x3-x1)
+        step=-df/ddf
+        x1=x2
+        x2=x3
+        x3=x3+step
+
+        f1=f2
+        f2=f3
+
+    return mapa3*x3
+
+def percentile_error(average,L,n1,n2,kc,factor,P25,P50,P75):
+    new_map=add_vorticity_to_map(average,L,n1,n2,kc,factor)
+    res,Per=Percentile_profiles(new_map,[25,50,75])
+    Q25=Per[:,0]
+    Q50=Per[:,1]
+    Q75=Per[:,2]
+
+    e1=np.mean((Q25-P25)**2)
+    e2=np.mean((Q50-P50)**2)
+    e3=np.mean((Q75-P75)**2)
+
+    return e1+e2+e3
+
+"""
 def get_noise_map(mapa):
     N=len(mapa)
     R=2*radial_map_N(N,N)/N
@@ -302,3 +454,4 @@ def get_noise_map(mapa):
     mapa3=(mapa-f3(R))/F3(R)
 
     return mapa1,mapa2,mapa3
+"""
