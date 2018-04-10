@@ -26,9 +26,9 @@ def lnlike(theta, mapa, L,res,P25,P50,P75):
 
 def lnprior(theta,N):
     n1, n2, kc,fc = theta
-    if -1 < n1 < 5 and n1 < n2 < 5.0 and 1 < kc < N and 0.5 < fc < 100:
+    if -1 < n1 < 5 and n1 < n2 < 9.0 and 1 < kc < N and 0.5 < fc < 100:
         return 0.0
-    return -np.inf
+    return -1e32
 
 def lnprob(theta, mapa,N, L,res,P25,P50,P75):
     lp = lnprior(theta,N)
@@ -45,6 +45,7 @@ omega_map=np.load('NWR10025_omeg.npy')
 
 mass_map*=sigma_map.sum()/mass_map.sum()
 omega_map*=mapa.sum()/omega_map.sum()
+omega_map=correct_map(mapa,omega_map)
 #average_map*=mapa.sum()/average_map.sum()
 
 res,Per=Percentile_profiles(mapa,[25,50,75])

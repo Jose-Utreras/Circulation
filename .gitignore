@@ -14,3 +14,7 @@ Test.py
 Test2.py
 .gitignore
 *Negative_*
+*.pdf
+mcmc_sigma
+mcmc
+*.png
